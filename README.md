@@ -11,7 +11,6 @@ no Docker, no config files, no root access.
 [![CI](https://img.shields.io/github/actions/workflow/status/Jaro-c/KlyraDB/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/Jaro-c/KlyraDB/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Jaro-c/KlyraDB?style=flat-square&color=00e5a0)](https://github.com/Jaro-c/KlyraDB/releases/latest)
 [![Snap Store](https://img.shields.io/badge/Snap%20Store-klyradb-82BEA0?style=flat-square&logo=snapcraft)](https://snapcraft.io/klyradb)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 
 <br/>
 
