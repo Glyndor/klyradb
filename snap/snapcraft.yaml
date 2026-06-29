@@ -10,10 +10,10 @@ description: |
   Engines are downloaded and installed on demand — only install what you need.
 
 license: Apache-2.0
-contact: https://github.com/Jaro-c/KlyraDB/issues
-website: https://github.com/Jaro-c/KlyraDB
-source-code: https://github.com/Jaro-c/KlyraDB
-issues: https://github.com/Jaro-c/KlyraDB/issues
+contact: https://github.com/Glyndor/klyradb/issues
+website: https://github.com/Glyndor/klyradb
+source-code: https://github.com/Glyndor/klyradb
+issues: https://github.com/Glyndor/klyradb/issues
 donation: https://github.com/sponsors/Jaro-c
 
 grade: stable

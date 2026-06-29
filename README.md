@@ -8,8 +8,8 @@
 Spin up isolated PostgreSQL, MySQL, MariaDB, Redis and MongoDB instances in seconds —  
 no Docker, no config files, no root access.
 
-[![CI](https://img.shields.io/github/actions/workflow/status/Jaro-c/KlyraDB/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/Jaro-c/KlyraDB/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Jaro-c/KlyraDB?style=flat-square&color=00e5a0)](https://github.com/Jaro-c/KlyraDB/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/Glyndor/klyradb/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/Glyndor/klyradb/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Glyndor/klyradb?style=flat-square&color=00e5a0)](https://github.com/Glyndor/klyradb/releases/latest)
 [![Snap Store](https://img.shields.io/badge/Snap%20Store-klyradb-82BEA0?style=flat-square&logo=snapcraft)](https://snapcraft.io/klyradb)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 
@@ -39,7 +39,7 @@ Engines are bundled — no extra packages needed.
 
 <br/>
 
-Download from [**Releases →**](https://github.com/Jaro-c/KlyraDB/releases/latest)
+Download from [**Releases →**](https://github.com/Glyndor/klyradb/releases/latest)
 
 | Platform | Download |
 |----------|----------|
@@ -108,7 +108,7 @@ Start / Stop / Delete at any time — nothing touches the rest of your system.
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
 # Clone
-git clone https://github.com/Jaro-c/KlyraDB.git
+git clone https://github.com/Glyndor/klyradb.git
 cd KlyraDB
 
 # Build
@@ -146,7 +146,7 @@ snap/          snapcraft.yaml and desktop entry
 
 ## Contributing
 
-Issues and pull requests are welcome. Open an [issue](https://github.com/Jaro-c/KlyraDB/issues) to discuss a bug or feature before sending a PR.
+Issues and pull requests are welcome. Open an [issue](https://github.com/Glyndor/klyradb/issues) to discuss a bug or feature before sending a PR.
 
 ---
 
