@@ -1,0 +1,21 @@
+[package]
+name = "klyradb"
+version = "0.7.2"
+edition = "2021"
+rust-version = "1.96"
+description = "Local database manager — run isolated PostgreSQL, MySQL, MariaDB, Valkey, Redis and MongoDB instances without Docker."
+repository = "https://github.com/Glyndor/klyradb"
+license = "Apache-2.0"
+
+# The structure standard mandates all product code under internal/, so the
+# Cargo src/ default is overridden with an explicit path key.
+[lib]
+name = "klyradb"
+path = "internal/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

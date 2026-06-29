@@ -7,3 +7,6 @@ parts/
 prime/
 stage/
 *.log
+
+# Rust
+/target
