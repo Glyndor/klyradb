@@ -116,9 +116,14 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: Install snapcraft
+        run: sudo snap install snapcraft --classic
+
       - name: Build snap
-        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1
         id: build
+        run: |
+          sudo snapcraft --destructive-mode
+          echo "snap=$(ls klyradb_*.snap | head -n1)" >> "$GITHUB_OUTPUT"
 
       - name: Upload snap artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -129,12 +134,9 @@ jobs:
 
       - name: Publish to Snap Store
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40 # v1
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-        with:
-          snap: ${{ steps.build.outputs.snap }}
-          release: stable
+        run: snapcraft upload --release=stable "${{ steps.build.outputs.snap }}"
 
   release:
     needs: [build, snap]
@@ -148,8 +150,11 @@ jobs:
           merge-multiple: true
 
       - name: Create release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
-        with:
-          name: KlyraDB ${{ github.ref_name }}
-          generate_release_notes: true
-          files: artifacts/*
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "KlyraDB ${{ github.ref_name }}" \
+            --generate-notes \
+            artifacts/*
