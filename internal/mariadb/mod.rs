@@ -255,11 +255,12 @@ fn make_dirs(inst: &Instance) -> Result<(), EngineError> {
 
 /// Renders the `[mariadbd]` config for an instance, bound to loopback.
 fn render_conf(inst: &Instance) -> String {
-	let sock = Path::new(&inst.data_dir).join("mariadb.sock");
+	// Unix-socket path is always slash-separated (this is a Linux engine).
+	let sock = format!("{}/mariadb.sock", inst.data_dir);
 	format!(
 		"[mariadbd]\ndatadir = {}\nsocket = {}\nport = {}\npid-file = {}\nlog-error = {}\nuser = {}\nbind-address = 127.0.0.1\n",
 		inst.data_dir,
-		sock.display(),
+		sock,
 		inst.port,
 		inst.pid_file,
 		inst.log_file,
