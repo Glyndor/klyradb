@@ -8,5 +8,6 @@
 pub mod engine;
 pub mod i18n;
 pub mod manager;
+pub mod redis;
 pub mod store;
 pub mod versions;

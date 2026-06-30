@@ -5,6 +5,9 @@
 //! byte-compatible with what the frontend consumes, so the serde attributes
 //! here are load-bearing, not cosmetic.
 
+pub mod paths;
+pub mod proc;
+
 use serde::{Deserialize, Serialize};
 
 /// A database engine kind that KlyraDB can manage.
