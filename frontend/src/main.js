@@ -1,5 +1,47 @@
 // KlyraDB frontend — vanilla JS. Wails exposes go.main.App.*
-const api = () => window.go && window.go.main && window.go.main.App;
+// Tauri bridge. The webview reaches the Rust backend through the global
+// `window.__TAURI__` (enabled by withGlobalTauri), so no bundler is needed.
+const TAURI = () => window.__TAURI__;
+const invoke = (cmd, args = {}) => TAURI().core.invoke(cmd, args);
+
+// Facade matching the former binding surface: each method maps to a Tauri
+// command, so the rest of the UI stays unchanged. camelCase argument keys are
+// converted to the Rust snake_case parameters by Tauri.
+const App = {
+  SetLocale: (code) => invoke("set_locale", { code }),
+  Strings: () => invoke("strings"),
+  Locale: () => invoke("locale"),
+  Direction: () => invoke("direction"),
+  AvailableLocales: () => invoke("available_locales"),
+  ListInstances: () => invoke("list_instances"),
+  ListVersions: () => invoke("list_versions"),
+  StartInstance: (id) => invoke("start_instance", { id }),
+  StopInstance: (id) => invoke("stop_instance", { id }),
+  DeleteInstance: (id) => invoke("delete_instance", { id }),
+  InstallBinary: (id) => invoke("install_binary", { id }),
+  UpgradePatch: (id) => invoke("upgrade_patch", { id }),
+  SuggestPort: (dbType) => invoke("suggest_port", { dbType }),
+  CreateInstance: (name, dbType, version, port) =>
+    invoke("create_instance", { name, dbType, version, port }),
+};
+const api = () => (TAURI() ? App : null);
+
+// Event bridge: Tauri's `listen` returns an unlisten function and delivers the
+// payload wrapped in an event object. Track unlisteners by event name so the
+// existing subscribe/unsubscribe-by-key call sites keep working, and unwrap
+// the payload to match the old callback signature.
+const _unlisten = new Map();
+async function eventsOn(key, cb) {
+  const un = await TAURI().event.listen(key, (e) => cb(e.payload));
+  _unlisten.set(key, un);
+}
+function eventsOff(key) {
+  const un = _unlisten.get(key);
+  if (un) {
+    un();
+    _unlisten.delete(key);
+  }
+}
 
 const LOCALE_NAMES = {
   ar:"العربية", ca:"Català", cs:"Čeština", da:"Dansk",
@@ -331,9 +373,7 @@ async function handleInstall(id) {
   };
 
   const evKey = "install:progress:" + id;
-  if (window.runtime && window.runtime.EventsOn) {
-    window.runtime.EventsOn(evKey, appendLine);
-  }
+  await eventsOn(evKey, appendLine);
 
   try {
     await api().InstallBinary(id);
@@ -345,9 +385,7 @@ async function handleInstall(id) {
     appendLine("Error: " + (e.message || String(e)));
   } finally {
     closeBtn.disabled = false;
-    if (window.runtime && window.runtime.EventsOff) {
-      window.runtime.EventsOff(evKey);
-    }
+    eventsOff(evKey);
     await refresh();
   }
 }
@@ -376,9 +414,7 @@ async function handlePatchUpgrade(id) {
   };
 
   const evKey = "install:progress:" + id;
-  if (window.runtime && window.runtime.EventsOn) {
-    window.runtime.EventsOn(evKey, appendLine);
-  }
+  await eventsOn(evKey, appendLine);
 
   try {
     await api().UpgradePatch(id);
@@ -390,9 +426,7 @@ async function handlePatchUpgrade(id) {
     appendLine("Error: " + (e.message || String(e)));
   } finally {
     closeBtn.disabled = false;
-    if (window.runtime && window.runtime.EventsOff) {
-      window.runtime.EventsOff(evKey);
-    }
+    eventsOff(evKey);
     await refresh();
   }
 }
