@@ -21,13 +21,13 @@ jobs:
     uses: Glyndor/.github/.github/workflows/rust-ci.yml@367c6651f8a8055085e7cb1e3c289e68f105e1c4 # v1.7.0
     with:
       msrv: "1.96"
-      extra-os: '["macos-latest", "windows-latest"]'
+      extra-test-os: '["macos-latest", "windows-latest"]'
       coverage-threshold: 90
       # The engine, installer and bridge layers shell out to real database
       # tooling and the Tauri runtime, so they are exercised by the live
       # DB-integration and app smoke gate rather than unit tests; only their
       # pure logic is unit-covered.
-      coverage-exclude: "internal/(pg|mysql|mariadb|mongodb|redis|install|commands)/|internal/main.rs"
+      coverage-ignore-regex: "internal/(pg|mysql|mariadb|mongodb|redis|install|commands)/|internal/main.rs"
 
   audit:
     uses: Glyndor/.github/.github/workflows/rust-audit.yml@367c6651f8a8055085e7cb1e3c289e68f105e1c4 # v1.7.0
