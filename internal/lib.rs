@@ -6,4 +6,7 @@
 //! Rust/Tauri rewrite.
 
 pub mod engine;
+pub mod i18n;
+pub mod manager;
 pub mod store;
+pub mod versions;
