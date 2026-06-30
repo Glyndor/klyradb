@@ -13,53 +13,37 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  ci:
+    uses: Glyndor/.github/.github/workflows/rust-ci.yml@367c6651f8a8055085e7cb1e3c289e68f105e1c4 # v1.7.0
+    with:
+      msrv: "1.96"
+      extra-os: '["macos-latest", "windows-latest"]'
+      coverage-threshold: 90
+      # The engine, installer and bridge layers shell out to real database
+      # tooling and the Tauri runtime, so they are exercised by the live
+      # DB-integration and app smoke gate rather than unit tests; only their
+      # pure logic is unit-covered.
+      coverage-exclude: "internal/(pg|mysql|mariadb|mongodb|redis|install|commands)/|internal/main.rs"
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26.6'
-          cache: true
+  audit:
+    uses: Glyndor/.github/.github/workflows/rust-audit.yml@367c6651f8a8055085e7cb1e3c289e68f105e1c4 # v1.7.0
 
-      - name: Test with coverage
-        run: go test ./internal/... -coverprofile=coverage.out -covermode=atomic
+  supply-chain:
+    uses: Glyndor/.github/.github/workflows/rust-supply-chain.yml@367c6651f8a8055085e7cb1e3c289e68f105e1c4 # v1.7.0
 
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  line-limit:
+    uses: Glyndor/.github/.github/workflows/line-limit.yml@367c6651f8a8055085e7cb1e3c289e68f105e1c4 # v1.7.0
+    with:
+      hard-limit: 500
+      soft-limit: 300
+      extensions: "rs"
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26.6'
-          cache: true
-
-      - name: golangci-lint
-        run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-          golangci-lint run --timeout=5m
-
-  security:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26.6'
-          cache: true
-
-      - name: gosec
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
-          gosec -exclude=G204,G302,G304 ./...
+  dco:
+    uses: Glyndor/.github/.github/workflows/dco.yml@367c6651f8a8055085e7cb1e3c289e68f105e1c4 # v1.7.0
 
   pin-policy:
     uses: Glyndor/.github/.github/workflows/pin-policy-reusable.yml@8517d94fde00466f59b95c5d1bd838e2ad24a8bf # v1.15.2
