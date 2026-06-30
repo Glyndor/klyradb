@@ -75,6 +75,10 @@ mod tests {
 		assert_eq!(check_pid(f.path()), None);
 	}
 
+	// Liveness is probed via /proc, which only exists on Linux; on other
+	// platforms check_pid always reports not-alive and the port check carries
+	// status instead.
+	#[cfg(target_os = "linux")]
 	#[test]
 	fn own_pid_reads_back_as_alive() {
 		let mut f = tempfile::NamedTempFile::new().unwrap();
@@ -93,5 +97,13 @@ mod tests {
 	fn unbound_high_port_reads_as_closed() {
 		// Nothing is expected to listen here during tests.
 		assert!(!port_open(1));
+	}
+
+	#[test]
+	fn a_bound_port_reads_as_open() {
+		use std::net::TcpListener;
+		let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+		let port = listener.local_addr().unwrap().port();
+		assert!(port_open(port));
 	}
 }

@@ -269,6 +269,23 @@ mod tests {
 	}
 
 	#[test]
+	fn parse_round_trips_every_kind_and_rejects_unknown() {
+		for db in DbType::all() {
+			assert_eq!(DbType::parse(db.as_str()), Some(db));
+		}
+		assert_eq!(DbType::parse("oracle"), None);
+		assert_eq!(DbType::parse(""), None);
+	}
+
+	#[test]
+	fn engine_error_displays_its_message_and_wraps_io() {
+		assert_eq!(EngineError::Tooling("x".into()).to_string(), "x");
+		assert_eq!(EngineError::NotInstalled("y".into()).to_string(), "y");
+		let io = std::io::Error::other("disk");
+		assert_eq!(EngineError::from(io).to_string(), "disk");
+	}
+
+	#[test]
 	fn instance_round_trips_through_json() {
 		let json = r#"{
 			"id":"ab12cd","name":"dev","type":"valkey","version":"8","port":6379,

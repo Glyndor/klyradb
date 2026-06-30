@@ -203,6 +203,22 @@ mod tests {
 	}
 
 	#[test]
+	fn detect_resolves_from_the_environment() {
+		let cat = Catalog::load();
+		// LC_ALL has the highest precedence; a region/codeset suffix is stripped.
+		std::env::set_var("LC_ALL", "es_ES.UTF-8");
+		std::env::remove_var("LC_MESSAGES");
+		std::env::remove_var("LANG");
+		if cat.has("es") {
+			assert_eq!(cat.detect().code, "es");
+		}
+		// An unknown locale falls back to English.
+		std::env::set_var("LC_ALL", "zz_ZZ");
+		assert_eq!(cat.detect().code, "en");
+		std::env::remove_var("LC_ALL");
+	}
+
+	#[test]
 	fn rtl_locales_report_rtl_direction() {
 		let cat = Catalog::load();
 		if cat.has("ar") {

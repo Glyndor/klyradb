@@ -396,7 +396,15 @@ mod tests {
 			self.db
 		}
 		fn versions(&self) -> Vec<crate::engine::Version> {
-			Vec::new()
+			vec![Version {
+				db_type: self.db,
+				major: "1".into(),
+				bin_path: String::new(),
+				installed: false,
+				label: "Fake 1".into(),
+				latest_patch: "1".into(),
+				installed_version: String::new(),
+			}]
 		}
 		fn create(&self, _inst: &mut Instance) -> Result<(), EngineError> {
 			Ok(())
@@ -502,5 +510,101 @@ mod tests {
 		let (m, _d, _s) = manager_with(DbType::Mongodb, false);
 		let p = m.next_free_port(DbType::Mongodb).unwrap();
 		assert!(p >= default_port(DbType::Mongodb));
+	}
+
+	#[test]
+	fn start_success_marks_running_and_records_the_call() {
+		let (mut m, _d, started) = manager_with(DbType::Postgres, false);
+		let a = m.create("a", DbType::Postgres, "17", None).unwrap();
+		m.start(&a.id).unwrap();
+		let inst = m.get(&a.id).unwrap();
+		assert_eq!(inst.status, Status::Running);
+		assert!(inst.last_error.is_empty());
+		assert_eq!(started.lock().unwrap().as_slice(), &[a.id]);
+	}
+
+	#[test]
+	fn stop_marks_stopped() {
+		let (mut m, _d, _s) = manager_with(DbType::Postgres, false);
+		let a = m.create("a", DbType::Postgres, "17", None).unwrap();
+		m.start(&a.id).unwrap();
+		m.stop(&a.id).unwrap();
+		assert_eq!(m.get(&a.id).unwrap().status, Status::Stopped);
+	}
+
+	#[test]
+	fn stop_all_stops_every_instance() {
+		let (mut m, _d, _s) = manager_with(DbType::Postgres, false);
+		let a = m.create("a", DbType::Postgres, "17", None).unwrap();
+		let b = m.create("b", DbType::Postgres, "17", None).unwrap();
+		m.start(&a.id).unwrap();
+		m.start(&b.id).unwrap();
+		m.stop_all();
+		assert!(m.list().iter().all(|i| i.status == Status::Stopped));
+	}
+
+	#[test]
+	fn lifecycle_calls_on_a_missing_instance_report_not_found() {
+		let (mut m, _d, _s) = manager_with(DbType::Postgres, false);
+		assert!(matches!(m.start("nope"), Err(ManagerError::NotFound(_))));
+		assert!(matches!(m.stop("nope"), Err(ManagerError::NotFound(_))));
+		assert!(matches!(m.delete("nope"), Err(ManagerError::NotFound(_))));
+		assert!(matches!(m.status("nope"), Err(ManagerError::NotFound(_))));
+	}
+
+	#[test]
+	fn status_reflects_the_engine_check() {
+		let (mut m, _d, _s) = manager_with(DbType::Postgres, false);
+		let a = m.create("a", DbType::Postgres, "17", None).unwrap();
+		// The fake echoes the stored status, which create left as Stopped.
+		assert_eq!(m.status(&a.id).unwrap(), Status::Stopped);
+	}
+
+	#[test]
+	fn create_honours_an_explicit_free_port() {
+		let (mut m, _d, _s) = manager_with(DbType::Postgres, false);
+		let inst = m.create("a", DbType::Postgres, "17", Some(15432)).unwrap();
+		assert_eq!(inst.port, 15432);
+	}
+
+	#[test]
+	fn versions_aggregates_every_engine() {
+		let (m, _d, _s) = manager_with(DbType::Postgres, false);
+		let vs = m.versions();
+		assert_eq!(vs.len(), 1);
+		assert_eq!(vs[0].db_type, DbType::Postgres);
+	}
+
+	#[test]
+	fn get_returns_a_clone_or_none() {
+		let (mut m, _d, _s) = manager_with(DbType::Postgres, false);
+		let a = m.create("a", DbType::Postgres, "17", None).unwrap();
+		assert_eq!(m.get(&a.id).unwrap().id, a.id);
+		assert!(m.get("missing").is_none());
+	}
+
+	#[test]
+	fn load_all_repopulates_from_disk() {
+		let dir = tempfile::tempdir().unwrap();
+		let id = {
+			let started = Arc::new(Mutex::new(Vec::new()));
+			let engine = FakeEngine {
+				db: DbType::Postgres,
+				fail_start: false,
+				started,
+			};
+			let mut m = Manager::new(dir.path(), vec![Box::new(engine)]).unwrap();
+			m.create("a", DbType::Postgres, "17", None).unwrap().id
+		};
+		// A fresh manager over the same base dir sees the persisted instance.
+		let engine = FakeEngine {
+			db: DbType::Postgres,
+			fail_start: false,
+			started: Arc::new(Mutex::new(Vec::new())),
+		};
+		let mut m2 = Manager::new(dir.path(), vec![Box::new(engine)]).unwrap();
+		m2.load_all().unwrap();
+		assert_eq!(m2.get(&id).unwrap().id, id);
+		assert_eq!(m2.base_dir(), dir.path());
 	}
 }
