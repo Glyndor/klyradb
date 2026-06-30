@@ -20,3 +20,5 @@ stage/
 
 # Go coverage (legacy)
 coverage.out
+/app/target
+/app/gen

@@ -8,7 +8,8 @@
 
 use std::sync::Mutex;
 
-use klyradb::commands::{self, AppState, LocaleState};
+mod commands;
+use commands::{AppState, LocaleState};
 use klyradb::engine::paths::base_dir;
 use klyradb::engine::Engine;
 use klyradb::i18n::Catalog;

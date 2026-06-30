@@ -1,0 +1,26 @@
+[package]
+name = "klyradb-app"
+version = "0.7.2"
+edition = "2021"
+rust-version = "1.96"
+description = "KlyraDB desktop shell — the Tauri front door to the klyradb core."
+repository = "https://github.com/Glyndor/klyradb"
+license = "Apache-2.0"
+build = "build.rs"
+
+# Isolated from the root crate's workspace so the generic Rust CI never tries to
+# build the GTK/WebKit-dependent Tauri shell; this crate is built by the
+# bespoke desktop/snap/release jobs that install those system libraries.
+[workspace]
+
+# The structure standard mandates the internal/ layout; override Cargo's src/.
+[[bin]]
+name = "klyradb"
+path = "internal/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+klyradb = { path = ".." }
+tauri = { version = "2", features = [] }

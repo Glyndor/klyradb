@@ -5,7 +5,6 @@
 //! per folder, mirroring the layout the Go implementation used before the
 //! Rust/Tauri rewrite.
 
-pub mod commands;
 pub mod engine;
 pub mod i18n;
 pub mod install;

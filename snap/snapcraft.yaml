@@ -63,9 +63,9 @@ parts:
     override-build: |
       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.96.0 --profile minimal
       export PATH="$HOME/.cargo/bin:$PATH"
-      cargo build --release --locked
-      install -D target/release/klyradb $CRAFT_PART_INSTALL/bin/klyradb
-      install -D icons/icon.png $CRAFT_PART_INSTALL/share/icons/hicolor/512x512/apps/klyradb.png
+      cargo build --release --locked --manifest-path app/Cargo.toml
+      install -D app/target/release/klyradb $CRAFT_PART_INSTALL/bin/klyradb
+      install -D app/icons/icon.png $CRAFT_PART_INSTALL/share/icons/hicolor/512x512/apps/klyradb.png
       install -D snap/local/klyradb.desktop $CRAFT_PART_INSTALL/share/applications/klyradb.desktop
 
   deps:

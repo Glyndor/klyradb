@@ -105,14 +105,14 @@ Start / Stop / Delete at any time — nothing touches the rest of your system.
 git clone https://github.com/Glyndor/klyradb.git
 cd klyradb
 
-# Build
-cargo build --release --locked
+# Build the desktop app (Tauri shell in app/)
+cargo build --release --locked --manifest-path app/Cargo.toml
 
 # Run
-cargo run
+cargo run --manifest-path app/Cargo.toml
 ```
 
-**Tests:**
+**Tests** (the GUI-agnostic core):
 ```bash
 cargo test
 ```

@@ -12,10 +12,10 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter, State};
 
-use crate::engine::{DbType, Instance, Status, Version};
-use crate::i18n::{Catalog, Lang};
-use crate::install;
-use crate::manager::Manager;
+use klyradb::engine::{DbType, Instance, Status, Version};
+use klyradb::i18n::{Catalog, Lang};
+use klyradb::install;
+use klyradb::manager::Manager;
 
 /// Shared application state behind the bridge.
 pub struct AppState {
