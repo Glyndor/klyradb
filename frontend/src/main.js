@@ -1,4 +1,4 @@
-// KlyraDB frontend — vanilla JS. Wails exposes go.main.App.*
+// KlyraDB frontend — vanilla JS. The Tauri backend is reached via window.__TAURI__.
 // Tauri bridge. The webview reaches the Rust backend through the global
 // `window.__TAURI__` (enabled by withGlobalTauri), so no bundler is needed.
 const TAURI = () => window.__TAURI__;

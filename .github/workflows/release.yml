@@ -8,110 +8,87 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.6'
-          cache: true
+          fetch-depth: 0
 
-      - name: Test
-        run: go test ./internal/...
+      - name: Tag matches Cargo.toml and is reachable from main
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')"
+          if [ "$tag" != "$manifest" ]; then
+            echo "tag $tag does not match Cargo.toml version $manifest" >&2
+            exit 1
+          fi
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "tagged commit is not reachable from main" >&2
+            exit 1
+          fi
+
+      - name: Audit dependencies
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
 
   build:
-    needs: test
+    needs: verify
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-22.04
             name: linux
+            artifact: klyradb-linux-amd64
+            binary: klyradb
           - os: windows-latest
             name: windows
+            artifact: klyradb-windows-amd64.exe
+            binary: klyradb.exe
           - os: macos-latest
             name: macos
+            artifact: klyradb-macos-arm64
+            binary: klyradb
     runs-on: ${{ matrix.os }}
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26.6'
-          cache: true
+      - name: Install Rust 1.96.0
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
 
       - name: System dependencies (Linux)
         if: matrix.name == 'linux'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev libssl-dev
 
-      - name: Install NSIS (Windows)
-        if: matrix.name == 'windows'
-        shell: powershell
+      - name: Build
+        run: cargo build --release --locked --manifest-path app/Cargo.toml
+
+      - name: Stage artifact
+        shell: bash
         run: |
-          choco install nsis -y
-          echo "C:\Program Files (x86)\NSIS" | Out-File -Append -FilePath $env:GITHUB_PATH
+          mkdir -p dist
+          cp "app/target/release/${{ matrix.binary }}" "dist/${{ matrix.artifact }}"
 
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-        env:
-          GOFLAGS: "-mod=mod"
-
-      - name: Build (Linux)
-        if: matrix.name == 'linux'
-        run: wails build -tags webkit2_41
-        env:
-          GOFLAGS: "-mod=mod"
-
-      - name: Build (Windows)
-        if: matrix.name == 'windows'
-        run: wails build -nsis
-        env:
-          GOFLAGS: "-mod=mod"
-
-      - name: Build (macOS)
-        if: matrix.name == 'macos'
-        run: wails build
-        env:
-          GOFLAGS: "-mod=mod"
-
-      - name: Rename artifact (Linux)
-        if: matrix.name == 'linux'
-        run: mv build/bin/klyradb build/bin/klyradb-linux-amd64
-
-      - name: Rename artifacts (Windows)
-        if: matrix.name == 'windows'
-        shell: powershell
-        run: |
-          Move-Item build/bin/klyradb.exe build/bin/klyradb-windows-amd64.exe
-          if (Test-Path "build/bin/klyradb-amd64-installer.exe") {
-            Move-Item build/bin/klyradb-amd64-installer.exe build/bin/klyradb-windows-amd64-setup.exe
-          }
-
-      - name: Package .app (macOS)
-        if: matrix.name == 'macos'
-        run: cd build/bin && zip -r klyradb-macos-arm64.zip klyradb.app
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: klyradb-${{ matrix.name }}
-          path: |
-            build/bin/klyradb-linux-amd64
-            build/bin/klyradb-windows-amd64.exe
-            build/bin/klyradb-windows-amd64-setup.exe
-            build/bin/klyradb-macos-arm64.zip
-          if-no-files-found: ignore
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
           retention-days: 30
 
   snap:
-    needs: test
+    needs: verify
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -125,8 +102,7 @@ jobs:
           sudo snapcraft --destructive-mode
           echo "snap=$(ls klyradb_*.snap | head -n1)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload snap artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: klyradb-snap
           path: ${{ steps.build.outputs.snap }}
@@ -148,6 +124,15 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Checksums
+        working-directory: artifacts
+        run: sha256sum * > SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: 'artifacts/klyradb-*'
 
       - name: Create release
         env:

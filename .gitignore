@@ -17,3 +17,6 @@ stage/
 /fuzz/corpus
 /fuzz/artifacts
 /fuzz/Cargo.lock
+
+# Go coverage (legacy)
+coverage.out
