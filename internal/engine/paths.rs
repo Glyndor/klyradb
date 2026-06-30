@@ -48,7 +48,8 @@ pub fn engines_dir() -> PathBuf {
 /// is found.
 pub fn find_binary(engine_subdir: &str, name: &str) -> Option<PathBuf> {
 	if let Some(snap) = snap_dir() {
-		for rel in ["usr/bin", "usr/local/bin"] {
+		let bundled = format!("opt/klyra-{engine_subdir}/bin");
+		for rel in [bundled.as_str(), "usr/bin", "usr/local/bin"] {
 			let p = snap.join(rel).join(name);
 			if p.is_file() {
 				return Some(p);
@@ -67,11 +68,11 @@ pub fn find_binary(engine_subdir: &str, name: &str) -> Option<PathBuf> {
 			return Some(p);
 		}
 	}
-	which(name)
+	search_path(name)
 }
 
 /// Searches `$PATH` for an executable, like `command -v`.
-fn which(name: &str) -> Option<PathBuf> {
+pub fn search_path(name: &str) -> Option<PathBuf> {
 	let path = std::env::var_os("PATH")?;
 	std::env::split_paths(&path)
 		.map(|dir| dir.join(name))
@@ -92,7 +93,7 @@ mod tests {
 	fn which_finds_an_absolute_match_on_path() {
 		// `sh` exists on every unix host the tests run on.
 		if cfg!(unix) {
-			let found = which("sh");
+			let found = search_path("sh");
 			assert!(found.is_some(), "sh should be resolvable on PATH");
 			assert!(found.unwrap().is_absolute());
 		}
@@ -100,6 +101,6 @@ mod tests {
 
 	#[test]
 	fn which_returns_none_for_a_nonexistent_binary() {
-		assert!(which("klyradb-definitely-not-a-real-binary-xyz").is_none());
+		assert!(search_path("klyradb-definitely-not-a-real-binary-xyz").is_none());
 	}
 }

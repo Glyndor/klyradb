@@ -8,6 +8,10 @@
 pub mod engine;
 pub mod i18n;
 pub mod manager;
+pub mod mariadb;
+pub mod mongodb;
+pub mod mysql;
+pub mod pg;
 pub mod redis;
 pub mod store;
 pub mod versions;
