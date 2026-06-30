@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 
-use crate::engine::{DbType, Engine, EngineError, Instance, Status};
+use crate::engine::{DbType, Engine, EngineError, Instance, Status, Version};
 use crate::store::{Store, StoreError};
 
 /// The first port each engine kind is offered; allocation scans upward from
@@ -135,6 +135,23 @@ impl Manager {
 	/// Every managed instance, in arbitrary order.
 	pub fn list(&self) -> Vec<Instance> {
 		self.instances.values().cloned().collect()
+	}
+
+	/// A copy of a single instance by id, if it exists.
+	pub fn get(&self, id: &str) -> Option<Instance> {
+		self.instances.get(id).cloned()
+	}
+
+	/// The installed and installable versions across every wired engine.
+	pub fn versions(&self) -> Vec<Version> {
+		let mut all: Vec<Version> = self.engines.values().flat_map(|e| e.versions()).collect();
+		all.sort_by(|a, b| {
+			a.db_type
+				.as_str()
+				.cmp(b.db_type.as_str())
+				.then(b.major.cmp(&a.major))
+		});
+		all
 	}
 
 	/// Creates and initializes a new instance.
@@ -365,14 +382,13 @@ fn path_str(p: &Path) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use std::cell::RefCell;
-	use std::rc::Rc;
+	use std::sync::{Arc, Mutex};
 
 	/// An engine stub that records calls and can be told to fail on start.
 	struct FakeEngine {
 		db: DbType,
 		fail_start: bool,
-		started: Rc<RefCell<Vec<String>>>,
+		started: Arc<Mutex<Vec<String>>>,
 	}
 
 	impl Engine for FakeEngine {
@@ -389,7 +405,7 @@ mod tests {
 			if self.fail_start {
 				return Err(EngineError::Tooling("boom".into()));
 			}
-			self.started.borrow_mut().push(inst.id.clone());
+			self.started.lock().unwrap().push(inst.id.clone());
 			Ok(())
 		}
 		fn stop(&self, _inst: &Instance) -> Result<(), EngineError> {
@@ -407,9 +423,9 @@ mod tests {
 	fn manager_with(
 		db: DbType,
 		fail_start: bool,
-	) -> (Manager, tempfile::TempDir, Rc<RefCell<Vec<String>>>) {
+	) -> (Manager, tempfile::TempDir, Arc<Mutex<Vec<String>>>) {
 		let dir = tempfile::tempdir().unwrap();
-		let started = Rc::new(RefCell::new(Vec::new()));
+		let started = Arc::new(Mutex::new(Vec::new()));
 		let engine = FakeEngine {
 			db,
 			fail_start,

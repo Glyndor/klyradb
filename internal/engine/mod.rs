@@ -40,6 +40,13 @@ impl DbType {
 		}
 	}
 
+	/// Parses a stable identifier back into a [`DbType`], rejecting anything
+	/// that is not one of the supported engines. Used at the bridge boundary,
+	/// where the engine kind arrives as an untrusted string from the webview.
+	pub fn parse(s: &str) -> Option<DbType> {
+		DbType::all().into_iter().find(|db| db.as_str() == s)
+	}
+
 	/// Every supported engine kind, in display order.
 	pub fn all() -> [DbType; 6] {
 		[
@@ -145,8 +152,9 @@ pub struct Version {
 ///
 /// Implementations shell out to the engine's own tooling; each method acts on a
 /// single instance and must leave that instance's data directory untouched on
-/// failure. Defined here so the manager can treat every engine uniformly.
-pub trait Engine {
+/// failure. Defined here so the manager can treat every engine uniformly. The
+/// `Send + Sync` bound lets the manager be shared across the bridge's threads.
+pub trait Engine: Send + Sync {
 	/// The engine kind this implementation manages.
 	fn db_type(&self) -> DbType;
 

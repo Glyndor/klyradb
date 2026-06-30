@@ -10,3 +10,4 @@ stage/
 
 # Rust
 /target
+/gen
