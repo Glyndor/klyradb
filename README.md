@@ -5,7 +5,7 @@ Redis and MongoDB instances — no Docker, no config files, no root access.
 
 [![CI](https://github.com/Glyndor/klyradb/actions/workflows/ci.yml/badge.svg)](https://github.com/Glyndor/klyradb/actions/workflows/ci.yml)
 
-Also published on the [Snap Store](https://snapcraft.io/klyradb). License: Apache-2.0.
+Also published on the [Snap Store](https://snapcraft.io/klyradb). License: MIT.
 
 ## Install
 
@@ -136,4 +136,4 @@ Issues and pull requests are welcome. Open an [issue](https://github.com/Glyndor
 
 ## License
 
-[Apache-2.0](LICENSE). Built with Go and [Wails](https://wails.io).
+[MIT](LICENSE). Built with Go and [Wails](https://wails.io).
