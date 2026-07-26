@@ -1,25 +1,11 @@
-<div align="center">
-
-<img src="build/appicon.png" width="120" alt="KlyraDB logo" />
-
 # KlyraDB
 
-**Local database manager for developers.**  
-Spin up isolated PostgreSQL, MySQL, MariaDB, Redis and MongoDB instances in seconds —  
-no Docker, no config files, no root access.
+Desktop application that manages local, isolated PostgreSQL, MySQL, MariaDB,
+Redis and MongoDB instances — no Docker, no config files, no root access.
 
-[![CI](https://img.shields.io/github/actions/workflow/status/Glyndor/klyradb/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/Glyndor/klyradb/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Glyndor/klyradb?style=flat-square&color=00e5a0)](https://github.com/Glyndor/klyradb/releases/latest)
-[![Snap Store](https://img.shields.io/badge/Snap%20Store-klyradb-82BEA0?style=flat-square&logo=snapcraft)](https://snapcraft.io/klyradb)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
+[![CI](https://github.com/Glyndor/klyradb/actions/workflows/ci.yml/badge.svg)](https://github.com/Glyndor/klyradb/actions/workflows/ci.yml)
 
-<br/>
-
-[**Download**](#install) · [**Features**](#features) · [**Build from source**](#build-from-source)
-
-</div>
-
----
+Also published on the [Snap Store](https://snapcraft.io/klyradb). License: MIT.
 
 ## Install
 
@@ -53,7 +39,7 @@ Download from [**Releases →**](https://github.com/Glyndor/klyradb/releases/lat
 
 ## Features
 
-### 🗄️ Five databases, one interface
+### Supported databases
 
 | Engine | Default port | Versions shown |
 |--------|-------------|----------------|
@@ -65,22 +51,22 @@ Download from [**Releases →**](https://github.com/Glyndor/klyradb/releases/lat
 
 Version lists are fetched live from [endoflife.date](https://endoflife.date) at startup so you always see the most recent releases. Falls back to a built-in list when offline.
 
-### ⚡ Zero friction
+### Instance management
 
 - **One click** to create, start, stop or delete any instance
 - **No root required** — everything runs in user space
 - **No conflicts** — each instance has its own port and data directory
 - **Copy connection URI** to clipboard instantly and paste into any client
 
-### 🔼 Stay up to date
+### Engine updates
 
 KlyraDB detects when a **patch update** is available for an installed engine (e.g. `18.2.1 → 18.2.2`) and shows a badge on the instance card. One click stops all affected instances, runs the system upgrade (`apt` / `brew`), and restarts them automatically.
 
-### 📦 Install engines on demand
+### Engine installation
 
 Outside the Snap, engine binaries may not be present yet. KlyraDB shows an **Install** button in that case — clicking it streams live `apt` / `brew` progress directly in the UI, no terminal needed. The instance starts automatically once the install finishes.
 
-### 🌍 Built for everyone
+### Localization
 
 Available in **30+ languages**, auto-detected from your system locale. Full RTL support for Arabic and Hebrew. Dark and light theme.
 
@@ -148,10 +134,6 @@ snap/          snapcraft.yaml and desktop entry
 
 Issues and pull requests are welcome. Open an [issue](https://github.com/Glyndor/klyradb/issues) to discuss a bug or feature before sending a PR.
 
----
+## License
 
-<div align="center">
-
-Made with Go + [Wails](https://wails.io) · [Apache 2.0 License](LICENSE)
-
-</div>
+[MIT](LICENSE). Built with Go and [Wails](https://wails.io).

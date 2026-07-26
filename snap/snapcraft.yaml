@@ -9,7 +9,7 @@ description: |
 
   Engines are downloaded and installed on demand — only install what you need.
 
-license: Apache-2.0
+license: MIT
 contact: https://github.com/Glyndor/klyradb/issues
 website: https://github.com/Glyndor/klyradb
 source-code: https://github.com/Glyndor/klyradb
