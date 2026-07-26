@@ -1,11 +1,21 @@
 version: 2
+
 updates:
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "daily"
+    labels:
+      - "type:deps"
+    open-pull-requests-limit: 10
+    target-branch: "develop"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
+    labels:
+      - "type:deps"
+      - "type:ci"
+    open-pull-requests-limit: 10
+    target-branch: "develop"
