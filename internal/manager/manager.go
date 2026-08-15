@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"sync"
@@ -23,6 +24,14 @@ import (
 	"klyradb/internal/redis"
 	"klyradb/internal/store"
 )
+
+// pgPackageVersionRE constrains the PostgreSQL version segment that gets
+// concatenated into OS package names ("postgresql-<v>" / "postgresql@<v>").
+// Versions come from the user via App.CreateInstance and end up as an
+// argument to pkexec; the regex keeps them on a safe character set so the
+// construction cannot smuggle shell metacharacters, additional flags, or a
+// different package prefix into the apt-get / brew invocation.
+var pgPackageVersionRE = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)
 
 // defaultPorts are starting port search points per DB type.
 var defaultPorts = map[engine.DBType]int{
@@ -166,6 +175,14 @@ func (m *Manager) Create(name, dbType, version string, port int) (engine.Instanc
 		return engine.Instance{}, fmt.Errorf("unknown database type: %s", dbType)
 	}
 
+	// The version is interpolated into the OS package name for PostgreSQL
+	// (postgresql-<v> on apt, postgresql@<v> on brew). Reject anything that
+	// doesn't look like a numeric major[.minor] so an unvalidated frontend
+	// input cannot reach pkexec as part of a package argument.
+	if t == engine.TypePostgres && !pgPackageVersionRE.MatchString(version) {
+		return engine.Instance{}, fmt.Errorf("invalid PostgreSQL version %q: must match ^[0-9]+(\\.[0-9]+)?$", version)
+	}
+
 	if port == 0 {
 		port = m.NextFreePort(t)
 	}
@@ -255,7 +272,13 @@ func (m *Manager) Install(id string, progress func(string)) error {
 	m.setStatus(id, engine.StatusInstalling, "")
 	progress("Installing " + string(inst.Type) + " " + inst.Version + "…")
 
-	c := exec.Command(cmd[0], cmd[1:]...) //nolint:gosec
+	// cmd[0] is a constant per OS ("pkexec" or "brew") and the rest of the
+	// argument slice is built by installCmd -> linuxPackage/brewPackage, where
+	// the only interpolated user input (PostgreSQL version) is matched by
+	// pgPackageVersionRE. Defensive validation in linuxPackage/brewPackage
+	// returns "" on a malformed version, which installCmd already handles by
+	// returning nil (caller errors out before reaching this exec).
+	c := exec.Command(cmd[0], cmd[1:]...) //nolint:gosec // see pgPackageVersionRE
 	stdout, _ := c.StdoutPipe()
 	stderr, _ := c.StderrPipe()
 
@@ -337,7 +360,11 @@ func (m *Manager) UpgradePatch(id string, progress func(string)) error {
 
 	progress("Upgrading " + string(inst.Type) + " " + inst.Version + "…")
 
-	c := exec.Command(cmd[0], cmd[1:]...) //nolint:gosec
+	// See Install: cmd[0] is constant per OS, the only user-derived segment
+	// (PostgreSQL version) is bounded by pgPackageVersionRE in linuxPackage
+	// and brewPackage. A version that fails the regex makes upgradeCmd return
+	// nil, and the caller errors out before this exec.
+	c := exec.Command(cmd[0], cmd[1:]...) //nolint:gosec // see pgPackageVersionRE
 	stdout, _ := c.StdoutPipe()
 	stderr, _ := c.StderrPipe()
 
@@ -433,6 +460,9 @@ func installCmd(t engine.DBType, version string) []string {
 func linuxPackage(t engine.DBType, version string) string {
 	switch t {
 	case engine.TypePostgres:
+		if !pgPackageVersionRE.MatchString(version) {
+			return ""
+		}
 		return "postgresql-" + version
 	case engine.TypeMySQL:
 		return "mysql-server"
@@ -449,6 +479,9 @@ func linuxPackage(t engine.DBType, version string) string {
 func brewPackage(t engine.DBType, version string) string {
 	switch t {
 	case engine.TypePostgres:
+		if !pgPackageVersionRE.MatchString(version) {
+			return ""
+		}
 		return "postgresql@" + version
 	case engine.TypeMySQL:
 		return "mysql"

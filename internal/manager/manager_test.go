@@ -20,10 +20,10 @@ func (m *mockEngine) Versions() []engine.Version {
 		{Type: m.dbType, Major: "16", Installed: true},
 	}
 }
-func (m *mockEngine) Create(inst *engine.Instance) error         { return nil }
-func (m *mockEngine) Start(inst *engine.Instance) error          { return nil }
-func (m *mockEngine) Stop(inst *engine.Instance) error           { return nil }
-func (m *mockEngine) Delete(inst *engine.Instance) error         { return nil }
+func (m *mockEngine) Create(inst *engine.Instance) error { return nil }
+func (m *mockEngine) Start(inst *engine.Instance) error  { return nil }
+func (m *mockEngine) Stop(inst *engine.Instance) error   { return nil }
+func (m *mockEngine) Delete(inst *engine.Instance) error { return nil }
 func (m *mockEngine) CheckStatus(inst *engine.Instance) engine.Status {
 	return engine.StatusStopped
 }
@@ -108,6 +108,52 @@ func TestCreate_unknownType(t *testing.T) {
 	m := newTestManager(t)
 	if _, err := m.Create("test", "unknown_db", "1", 0); err == nil {
 		t.Error("expected error for unknown DB type")
+	}
+}
+
+func TestCreate_invalidPostgresVersion(t *testing.T) {
+	m := newTestManager(t)
+	cases := []string{
+		"",                      // empty
+		"../etc/passwd",         // path traversal
+		"16; rm -rf /",          // command metacharacters
+		"16 --allow-downgrades", // flag injection
+		"16\n",                  // control character
+		"16beta1",               // non-numeric suffix
+		"v16",                   // leading letter
+		"16.3.1",                // too many segments for package name
+	}
+	for _, v := range cases {
+		if _, err := m.Create("pg1", "postgres", v, 0); err == nil {
+			t.Errorf("expected error for Postgres version %q, got nil", v)
+		}
+	}
+}
+
+func TestCreate_validPostgresVersion(t *testing.T) {
+	m := newTestManager(t)
+	for _, v := range []string{"14", "15", "16", "16.3", "17", "18", "18.10"} {
+		if _, err := m.Create("pg-"+v, "postgres", v, 0); err != nil {
+			t.Errorf("expected Postgres version %q to be accepted, got error: %v", v, err)
+		}
+	}
+}
+
+func TestCreate_otherEnginesUnaffectedByVersionRegex(t *testing.T) {
+	// The regex only constrains versions used to build OS package names,
+	// which today is PostgreSQL alone. For MySQL/MariaDB/Redis/MongoDB the
+	// version is just a UI selector; verify it is not rejected here.
+	m := newTestManager(t)
+	cases := map[string]string{
+		"mysql":   "8.4",
+		"mariadb": "11.4",
+		"redis":   "8.6",
+		"mongodb": "8.2.6",
+	}
+	for dbType, v := range cases {
+		if _, err := m.Create("inst-"+dbType, dbType, v, 0); err != nil {
+			t.Errorf("expected %s version %q to be accepted, got error: %v", dbType, v, err)
+		}
 	}
 }
 
