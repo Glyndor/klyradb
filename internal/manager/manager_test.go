@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"strings"
 	"testing"
 
 	"klyradb/internal/engine"
@@ -20,10 +21,10 @@ func (m *mockEngine) Versions() []engine.Version {
 		{Type: m.dbType, Major: "16", Installed: true},
 	}
 }
-func (m *mockEngine) Create(inst *engine.Instance) error         { return nil }
-func (m *mockEngine) Start(inst *engine.Instance) error          { return nil }
-func (m *mockEngine) Stop(inst *engine.Instance) error           { return nil }
-func (m *mockEngine) Delete(inst *engine.Instance) error         { return nil }
+func (m *mockEngine) Create(inst *engine.Instance) error { return nil }
+func (m *mockEngine) Start(inst *engine.Instance) error  { return nil }
+func (m *mockEngine) Stop(inst *engine.Instance) error   { return nil }
+func (m *mockEngine) Delete(inst *engine.Instance) error { return nil }
 func (m *mockEngine) CheckStatus(inst *engine.Instance) engine.Status {
 	return engine.StatusStopped
 }
@@ -108,6 +109,113 @@ func TestCreate_unknownType(t *testing.T) {
 	m := newTestManager(t)
 	if _, err := m.Create("test", "unknown_db", "1", 0); err == nil {
 		t.Error("expected error for unknown DB type")
+	}
+}
+
+func TestLinuxPackage_mongodbIsBlocked(t *testing.T) {
+	if got := linuxPackage(engine.TypeMongoDB, "8.2.6"); got != "" {
+		t.Errorf("linuxPackage(MongoDB) should return \"\" so installCmd short-circuits, got %q", got)
+	}
+}
+
+func TestLinuxPackage_otherEnginesUnchanged(t *testing.T) {
+	cases := map[engine.DBType]string{
+		engine.TypeMySQL:   "mysql-server",
+		engine.TypeMariaDB: "mariadb-server",
+		engine.TypeRedis:   "redis-server",
+	}
+	for dbType, want := range cases {
+		if got := linuxPackage(dbType, ""); got != want {
+			t.Errorf("linuxPackage(%s) = %q, want %q", dbType, got, want)
+		}
+	}
+}
+
+func TestLinuxInstallBlockedReason_mongodbExplainsTheLimitation(t *testing.T) {
+	reason := linuxInstallBlockedReason(engine.TypeMongoDB, "8.2.6")
+	if reason == "" {
+		t.Fatal("expected a non-empty reason for MongoDB on Linux")
+	}
+	// The message must answer the three questions: what, why, what-to-do.
+	wantSubstrings := []string{
+		"MongoDB on Linux",
+		"repo.mongodb.org", // where the official package lives
+		"klyradb does not", // why klyradb can't do it for you
+		"mongodb-org",      // the right package name
+		"rewrite",          // the upcoming verified-download path
+	}
+	for _, sub := range wantSubstrings {
+		if !strings.Contains(reason, sub) {
+			t.Errorf("MongoDB reason missing %q; full message:\n%s", sub, reason)
+		}
+	}
+}
+
+func TestLinuxInstallBlockedReason_otherEnginesReturnEmpty(t *testing.T) {
+	for _, dbType := range []engine.DBType{
+		engine.TypePostgres, engine.TypeMySQL, engine.TypeMariaDB, engine.TypeRedis,
+	} {
+		if got := linuxInstallBlockedReason(dbType, ""); got != "" {
+			t.Errorf("linuxInstallBlockedReason(%s) = %q, want \"\"", dbType, got)
+		}
+	}
+}
+
+func TestInstall_mongodbOnLinuxReturnsExplanatoryError(t *testing.T) {
+	m := newTestManager(t)
+	inst, err := m.Create("pg-first", "postgres", "16", 0)
+	if err != nil {
+		t.Fatalf("Create postgres: %v", err)
+	}
+	mongo, err := m.Create("mongo-1", "mongodb", "8.2.6", 0)
+	if err != nil {
+		t.Fatalf("Create mongodb: %v", err)
+	}
+	// Run the install on the MongoDB instance. We are not running under Snap
+	// in tests; this exercises the direct-download path. The package
+	// manager must not be invoked — the function must fail closed with the
+	// specific reason before reaching installCmd.
+	err = m.Install(mongo.ID, func(string) {})
+	if err == nil {
+		t.Fatal("expected Install(MongoDB,Linux) to fail, got nil")
+	}
+	if !strings.Contains(err.Error(), "MongoDB on Linux") {
+		t.Errorf("expected the specific MongoDB-on-Linux reason, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "Unable to locate package") {
+		t.Errorf("install must not reach apt — got a raw apt message: %v", err)
+	}
+	// The lastError on the persisted instance must carry the user-facing
+	// reason so the frontend card (line ~264 of main.js) can show it.
+	// (Manager.Status() overwrites Status with eng.CheckStatus(), so we
+	// assert on LastError directly.)
+	m.mu.RLock()
+	last := m.instances[mongo.ID].LastError
+	m.mu.RUnlock()
+	if !strings.Contains(last, "MongoDB on Linux") {
+		t.Errorf("instance.LastError should carry the specific reason, got %q", last)
+	}
+	// Sanity: the Postgres instance is untouched.
+	if _, ok := m.instances[inst.ID]; !ok {
+		t.Error("the unrelated Postgres instance should not be affected by the MongoDB failure")
+	}
+}
+
+func TestUpgradePatch_mongodbOnLinuxReturnsExplanatoryError(t *testing.T) {
+	m := newTestManager(t)
+	mongo, err := m.Create("mongo-1", "mongodb", "8.2.6", 0)
+	if err != nil {
+		t.Fatalf("Create mongodb: %v", err)
+	}
+	err = m.UpgradePatch(mongo.ID, func(string) {})
+	if err == nil {
+		t.Fatal("expected UpgradePatch(MongoDB,Linux) to fail, got nil")
+	}
+	if !strings.Contains(err.Error(), "MongoDB on Linux") {
+		t.Errorf("expected the specific MongoDB-on-Linux reason, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "Unable to locate package") {
+		t.Errorf("upgrade must not reach apt — got a raw apt message: %v", err)
 	}
 }
 

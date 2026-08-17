@@ -243,6 +243,15 @@ func (m *Manager) Install(id string, progress func(string)) error {
 		return fmt.Errorf("instance %s not found", id)
 	}
 
+	// Linux-specific blocks take precedence over the Snap branch below so the
+	// user sees the real reason (apt/brew does not ship MongoDB) instead of
+	// the generic "not bundled in the snap package" message on Linux direct
+	// downloads AND under Snap.
+	if reason := linuxInstallBlockedReason(inst.Type, inst.Version); reason != "" {
+		m.setStatus(id, engine.StatusNeedsInstall, reason)
+		return fmt.Errorf("%s", reason)
+	}
+
 	if engine.SnapDir() != "" {
 		return fmt.Errorf("%s is not bundled in the snap package", inst.Type)
 	}
@@ -304,6 +313,11 @@ func (m *Manager) UpgradePatch(id string, progress func(string)) error {
 	m.mu.RUnlock()
 	if !ok {
 		return fmt.Errorf("instance %s not found", id)
+	}
+
+	if reason := linuxInstallBlockedReason(inst.Type, inst.Version); reason != "" {
+		m.setStatus(id, engine.StatusNeedsInstall, reason)
+		return fmt.Errorf("%s", reason)
 	}
 
 	if engine.SnapDir() != "" {
@@ -441,7 +455,13 @@ func linuxPackage(t engine.DBType, version string) string {
 	case engine.TypeRedis:
 		return "redis-server"
 	case engine.TypeMongoDB:
-		return "mongodb"
+		// Not installable from klyradb on Linux: the "mongodb" package was
+		// removed from Debian/Ubuntu years ago and MongoDB Inc. distributes
+		// the official server as "mongodb-org" from repo.mongodb.org, a
+		// repository klyradb does not configure. The explanatory message is
+		// surfaced by linuxInstallBlockedReason before installCmd runs, so
+		// this case deliberately returns "" to short-circuit.
+		return ""
 	}
 	return ""
 }
@@ -458,6 +478,20 @@ func brewPackage(t engine.DBType, version string) string {
 		return "redis"
 	case engine.TypeMongoDB:
 		return "mongodb-community"
+	}
+	return ""
+}
+
+// linuxInstallBlockedReason returns a user-facing explanation of why
+// installation is impossible on Linux for the given engine and version, or
+// "" if installation is supported. Mirrors the return-empty conditions of
+// linuxPackage so a single call at the start of Install / UpgradePatch
+// covers both code paths. Surfaced as the install error so the user sees
+// the real reason instead of a raw apt "Unable to locate package" message.
+func linuxInstallBlockedReason(t engine.DBType, version string) string {
+	switch t {
+	case engine.TypeMongoDB:
+		return "MongoDB on Linux is not installable from klyradb. The package \"mongodb\" was removed from Debian and Ubuntu years ago; MongoDB Inc. distributes the official server as \"mongodb-org\" from repo.mongodb.org, a repository klyradb does not configure. To use MongoDB on Linux today: either add the official MongoDB APT repository to your system (https://www.mongodb.com/docs/manual/installation/), or wait for the verified download path in the upcoming rewrite."
 	}
 	return ""
 }
