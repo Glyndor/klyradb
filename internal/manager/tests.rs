@@ -281,6 +281,9 @@ fn install_mongodb_returns_blocked_reason_and_marks_needs_install() {
 	assert_eq!(reloaded.last_error, msg);
 }
 
+// The Snap branch only exists under cfg!(target_os = "linux") in
+// install(), so this asserts a message no other platform produces.
+#[cfg(target_os = "linux")]
 #[test]
 fn install_mongodb_takes_precedence_over_the_snap_branch() {
 	// With SNAP set, the install::install snap branch would otherwise trigger
@@ -328,6 +331,9 @@ fn upgrade_patch_mongodb_returns_blocked_reason_and_marks_needs_install() {
 	assert_eq!(stored.last_error, msg);
 }
 
+// The Snap branch only exists under cfg!(target_os = "linux") in
+// install(), so this asserts a message no other platform produces.
+#[cfg(target_os = "linux")]
 #[test]
 fn install_non_blocked_engine_under_snap_falls_through_to_install() {
 	// Postgres is not blocked, so the blocked check returns None and the

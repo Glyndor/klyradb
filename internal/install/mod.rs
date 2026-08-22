@@ -172,6 +172,10 @@ mod tests {
 		}
 	}
 
+	// The Snap branch only exists under cfg!(target_os = "linux") in
+	// The Snap branch only exists under cfg!(target_os = "linux") in
+	// install(), so this asserts a message no other platform produces.
+	#[cfg(target_os = "linux")]
 	#[test]
 	fn install_mongodb_on_linux_short_circuits_before_the_snap_branch() {
 		// Simulate a snap runtime so the snap branch would otherwise trigger.
@@ -196,6 +200,10 @@ mod tests {
 		);
 	}
 
+	// The Snap branch only exists under cfg!(target_os = "linux") in
+	// The Snap branch only exists under cfg!(target_os = "linux") in
+	// install(), so this asserts a message no other platform produces.
+	#[cfg(target_os = "linux")]
 	#[test]
 	fn install_non_blocked_engine_inside_a_snap_uses_the_snap_branch() {
 		// Postgres is not blocked; under SNAP the snap branch must trigger,
