@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.96"
 description = "KlyraDB desktop shell — the Tauri front door to the klyradb core."
 repository = "https://github.com/Glyndor/klyradb"
-license = "Apache-2.0"
+license = "MIT"
 build = "build.rs"
 
 # Isolated from the root crate's workspace so the generic Rust CI never tries to
