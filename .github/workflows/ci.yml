@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   ci:
-    uses: Glyndor/.github/.github/workflows/rust-ci.yml@367c6651f8a8055085e7cb1e3c289e68f105e1c4 # v1.7.0
+    uses: Glyndor/.github/.github/workflows/rust-ci.yml@e70ff47fd8aefa0f054846815f19b98768d61122 # v1.17.0
     with:
       msrv: "1.96"
       extra-test-os: '["macos-latest", "windows-latest"]'
@@ -30,25 +30,25 @@ jobs:
       coverage-ignore-regex: "internal/(pg|mysql|mariadb|mongodb|redis|install|commands)/|internal/engine/paths.rs|internal/main.rs"
 
   audit:
-    uses: Glyndor/.github/.github/workflows/rust-audit.yml@367c6651f8a8055085e7cb1e3c289e68f105e1c4 # v1.7.0
+    uses: Glyndor/.github/.github/workflows/rust-audit.yml@e70ff47fd8aefa0f054846815f19b98768d61122 # v1.17.0
 
   supply-chain:
-    uses: Glyndor/.github/.github/workflows/rust-supply-chain.yml@367c6651f8a8055085e7cb1e3c289e68f105e1c4 # v1.7.0
+    uses: Glyndor/.github/.github/workflows/rust-supply-chain.yml@e70ff47fd8aefa0f054846815f19b98768d61122 # v1.17.0
 
   line-limit:
-    uses: Glyndor/.github/.github/workflows/line-limit.yml@367c6651f8a8055085e7cb1e3c289e68f105e1c4 # v1.7.0
+    uses: Glyndor/.github/.github/workflows/line-limit.yml@e70ff47fd8aefa0f054846815f19b98768d61122 # v1.17.0
     with:
       hard-limit: 500
       soft-limit: 300
       extensions: "rs"
 
   dco:
-    uses: Glyndor/.github/.github/workflows/dco.yml@367c6651f8a8055085e7cb1e3c289e68f105e1c4 # v1.7.0
+    uses: Glyndor/.github/.github/workflows/dco.yml@e70ff47fd8aefa0f054846815f19b98768d61122 # v1.17.0
 
   pin-policy:
-    uses: Glyndor/.github/.github/workflows/pin-policy-reusable.yml@8517d94fde00466f59b95c5d1bd838e2ad24a8bf # v1.15.2
+    uses: Glyndor/.github/.github/workflows/pin-policy-reusable.yml@e70ff47fd8aefa0f054846815f19b98768d61122 # v1.17.0
 
   dependabot-freshness:
-    uses: Glyndor/.github/.github/workflows/dependabot-freshness.yml@8517d94fde00466f59b95c5d1bd838e2ad24a8bf # v1.15.2
+    uses: Glyndor/.github/.github/workflows/dependabot-freshness.yml@e70ff47fd8aefa0f054846815f19b98768d61122 # v1.17.0
     with:
       max-age-days: 15
