@@ -1,0 +1,22 @@
+name: DCO
+
+# Its own workflow, and pull_request only, because the reusable derives the
+# commit range from github.event.pull_request. ci.yml also runs on push, where
+# that context does not exist, so the range came through empty and the check
+# failed closed with "could not enumerate merge commits between  and ".
+# Glyndor/podup wires it the same way.
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  # Keep this job named `dco`: the status check is reported as
+  # "dco / Signed-off-by present on every commit", and renaming the job
+  # renames the check that branch protection is configured against.
+  dco:
+    uses: Glyndor/.github/.github/workflows/dco.yml@e70ff47fd8aefa0f054846815f19b98768d61122 # v1.17.0
