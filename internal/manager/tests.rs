@@ -229,3 +229,144 @@ fn load_all_repopulates_from_disk() {
 	assert_eq!(m2.get(&id).unwrap().id, id);
 	assert_eq!(m2.base_dir(), dir.path());
 }
+
+#[test]
+fn install_mongodb_returns_blocked_reason_and_marks_needs_install() {
+	// MongoDB is a real DbType the Rust rewrite wires an engine for, but the
+	// fake-only manager here exercises the manager-side blocked path: the
+	// install command must short-circuit BEFORE any install command runs and
+	// MUST leave the instance in NeedsInstall with the explanatory reason on
+	// disk so the frontend can show it. Use the real install::blocked_reason
+	// message verbatim so a future refactor that drops it fails the test.
+	let (mut m, _d, _s) = manager_with(DbType::Mongodb, false);
+	let a = m.create("a", DbType::Mongodb, "8.2.6", None).unwrap();
+
+	let err = m.install(&a.id, |_| {}).unwrap_err();
+	let msg = match err {
+		ManagerError::Engine(m) => m,
+		other => panic!("expected ManagerError::Engine, got {other:?}"),
+	};
+	// The message is the blocked reason, not a snap/brew/manager-of-something
+	// else message.
+	assert!(
+		msg.contains("MongoDB on Linux"),
+		"install must surface the MongoDB-on-Linux reason, got: {msg}",
+	);
+	assert!(
+		!msg.contains("Unable to locate package"),
+		"install must not reach apt — got a raw apt message: {msg}",
+	);
+	assert!(
+		!msg.contains("brew"),
+		"install must not reach brew — got a brew message: {msg}",
+	);
+	// The persisted instance carries the reason so the frontend card can show
+	// it. Status becomes NeedsInstall, last_error matches the manager's error.
+	let stored = m.get(&a.id).unwrap();
+	assert_eq!(stored.status, Status::NeedsInstall);
+	assert_eq!(stored.last_error, msg);
+	// Reloading from disk sees the same status and reason.
+	let mut m2 = Manager::new(
+		m.base_dir(),
+		vec![Box::new(FakeEngine {
+			db: DbType::Mongodb,
+			fail_start: false,
+			started: Arc::new(Mutex::new(Vec::new())),
+		})],
+	)
+	.unwrap();
+	m2.load_all().unwrap();
+	let reloaded = m2.get(&a.id).unwrap();
+	assert_eq!(reloaded.status, Status::NeedsInstall);
+	assert_eq!(reloaded.last_error, msg);
+}
+
+#[test]
+fn install_mongodb_takes_precedence_over_the_snap_branch() {
+	// With SNAP set, the install::install snap branch would otherwise trigger
+	// for any engine. The blocked check on the manager side must still win
+	// for MongoDB — the user sees the real reason, not the snap message.
+	let (mut m, _d, _s) = manager_with(DbType::Mongodb, false);
+	let a = m.create("a", DbType::Mongodb, "8.2.6", None).unwrap();
+	unsafe {
+		std::env::set_var("SNAP", "/snap/klyradb/x1");
+	}
+	let result = m.install(&a.id, |_| {});
+	unsafe {
+		std::env::remove_var("SNAP");
+	}
+	let err = result.unwrap_err();
+	let msg = match err {
+		ManagerError::Engine(m) => m,
+		other => panic!("expected ManagerError::Engine, got {other:?}"),
+	};
+	assert!(
+		msg.contains("MongoDB on Linux"),
+		"blocked reason must win over the Snap branch, got: {msg}",
+	);
+	assert!(
+		!msg.contains("not bundled") && !msg.contains("snap"),
+		"the snap-branch message must not leak through: {msg}",
+	);
+}
+
+#[test]
+fn upgrade_patch_mongodb_returns_blocked_reason_and_marks_needs_install() {
+	let (mut m, _d, _s) = manager_with(DbType::Mongodb, false);
+	let a = m.create("a", DbType::Mongodb, "8.2.6", None).unwrap();
+	let err = m.upgrade_patch(&a.id, |_| {}).unwrap_err();
+	let msg = match err {
+		ManagerError::Engine(m) => m,
+		other => panic!("expected ManagerError::Engine, got {other:?}"),
+	};
+	assert!(
+		msg.contains("MongoDB on Linux"),
+		"upgrade_patch must surface the MongoDB-on-Linux reason, got: {msg}",
+	);
+	let stored = m.get(&a.id).unwrap();
+	assert_eq!(stored.status, Status::NeedsInstall);
+	assert_eq!(stored.last_error, msg);
+}
+
+#[test]
+fn install_non_blocked_engine_under_snap_falls_through_to_install() {
+	// Postgres is not blocked, so the blocked check returns None and the
+	// install command runs. Under SNAP it hits the snap branch and returns
+	// the snap message — which is exactly what the user should see for a
+	// non-blocked engine. This is the inverse of the MongoDB precedence test.
+	let (mut m, _d, _s) = manager_with(DbType::Postgres, false);
+	let a = m.create("a", DbType::Postgres, "17", None).unwrap();
+	unsafe {
+		std::env::set_var("SNAP", "/snap/klyradb/x1");
+	}
+	let result = m.install(&a.id, |_| {});
+	unsafe {
+		std::env::remove_var("SNAP");
+	}
+	let err = result.unwrap_err();
+	let msg = match err {
+		ManagerError::Engine(m) => m,
+		other => panic!("expected ManagerError::Engine, got {other:?}"),
+	};
+	assert!(
+		msg.contains("snap"),
+		"non-blocked engine under snap must reach the snap branch: {msg}",
+	);
+	assert!(
+		!msg.contains("MongoDB"),
+		"non-blocked engine must not surface the MongoDB reason: {msg}",
+	);
+}
+
+#[test]
+fn install_unknown_instance_returns_not_found() {
+	let (mut m, _d, _s) = manager_with(DbType::Postgres, false);
+	assert!(matches!(
+		m.install("missing", |_| {}),
+		Err(ManagerError::NotFound(_))
+	));
+	assert!(matches!(
+		m.upgrade_patch("missing", |_| {}),
+		Err(ManagerError::NotFound(_))
+	));
+}

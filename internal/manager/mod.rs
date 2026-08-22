@@ -12,6 +12,7 @@ use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 
 use crate::engine::{DbType, Engine, EngineError, Instance, Status, Version};
+use crate::install;
 use crate::store::{Store, StoreError};
 
 /// The first port each engine kind is offered; allocation scans upward from
@@ -241,6 +242,60 @@ impl Manager {
 		for id in ids {
 			let _ = self.stop(&id);
 		}
+	}
+
+	/// Installs the engine binary for an instance, streaming each output line
+	/// to `emit`.
+	///
+	/// A Linux-specific "blocked" check runs **before** the install command
+	/// (and therefore before the Snap branch in [`install::install`]), so the
+	/// user sees the real reason for a MongoDB install on both Linux direct
+	/// downloads and under Snap, instead of the generic "not bundled in the
+	/// snap package" message. The blocked status and reason are persisted so
+	/// the frontend instance card can display them.
+	pub fn install(&mut self, id: &str, emit: impl FnMut(&str)) -> Result<(), ManagerError> {
+		let inst = self
+			.instances
+			.get(id)
+			.ok_or_else(|| ManagerError::NotFound(id.to_string()))?
+			.clone();
+		if let Some(reason) = install::blocked_reason(inst.db_type, &inst.version) {
+			self.mark_blocked(id, &reason)?;
+			return Err(ManagerError::Engine(reason));
+		}
+		install::install(inst.db_type, &inst.version, emit).map_err(ManagerError::Engine)
+	}
+
+	/// Re-runs the install for a patch release, then restarts the instance.
+	/// Streams install progress to `emit` like [`Manager::install`], and
+	/// applies the same Linux-specific blocked check first.
+	pub fn upgrade_patch(&mut self, id: &str, emit: impl FnMut(&str)) -> Result<(), ManagerError> {
+		let inst = self
+			.instances
+			.get(id)
+			.ok_or_else(|| ManagerError::NotFound(id.to_string()))?
+			.clone();
+		if let Some(reason) = install::blocked_reason(inst.db_type, &inst.version) {
+			self.mark_blocked(id, &reason)?;
+			return Err(ManagerError::Engine(reason));
+		}
+		let _ = self.with_engine(id, |engine, inst| engine.stop(inst));
+		install::install(inst.db_type, &inst.version, emit).map_err(ManagerError::Engine)?;
+		self.with_engine(id, |engine, inst| engine.start(inst))
+	}
+
+	/// Sets the instance status to [`Status::NeedsInstall`] and records the
+	/// user-facing reason in `last_error`, persisting the registry. Used by
+	/// [`Manager::install`] and [`Manager::upgrade_patch`] when the engine
+	/// cannot be installed on this host.
+	fn mark_blocked(&mut self, id: &str, reason: &str) -> Result<(), ManagerError> {
+		let inst = self
+			.instances
+			.get_mut(id)
+			.ok_or_else(|| ManagerError::NotFound(id.to_string()))?;
+		inst.status = Status::NeedsInstall;
+		inst.last_error = reason.to_string();
+		self.persist()
 	}
 
 	/// Stops the instance and removes it and its data directory.

@@ -120,47 +120,32 @@ pub fn suggest_port(state: State<'_, AppState>, db_type: String) -> Result<u16, 
 }
 
 /// Installs the engine binary for an instance, streaming progress as
-/// `install:progress:<id>` events. Runs outside the manager lock so other
-/// commands stay responsive during a long install.
+/// `install:progress:<id>` events. The manager runs the Linux-specific
+/// "blocked" check first (MongoDB on Linux), then drives the install command.
 #[tauri::command]
 pub fn install_binary(
 	app: AppHandle,
 	state: State<'_, AppState>,
 	id: String,
 ) -> Result<(), String> {
-	let inst = state
-		.manager
-		.lock()
-		.unwrap()
-		.get(&id)
-		.ok_or_else(|| format!("no such instance: {id}"))?;
 	let event = format!("install:progress:{id}");
-	install::install(inst.db_type, &inst.version, |line| {
+	let mut mgr = state.manager.lock().unwrap();
+	mgr.install(&id, |line| {
 		let _ = app.emit(&event, line.to_string());
 	})
+	.map_err(|e| e.to_string())
 }
 
 /// Re-runs the package install for an instance to pick up a patch release, then
 /// restarts it. Streams progress like [`install_binary`].
 #[tauri::command]
 pub fn upgrade_patch(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
-	let inst = state
-		.manager
-		.lock()
-		.unwrap()
-		.get(&id)
-		.ok_or_else(|| format!("no such instance: {id}"))?;
-	let _ = state.manager.lock().unwrap().stop(&id);
 	let event = format!("install:progress:{id}");
-	install::install(inst.db_type, &inst.version, |line| {
+	let mut mgr = state.manager.lock().unwrap();
+	mgr.upgrade_patch(&id, |line| {
 		let _ = app.emit(&event, line.to_string());
-	})?;
-	state
-		.manager
-		.lock()
-		.unwrap()
-		.start(&id)
-		.map_err(|e| e.to_string())
+	})
+	.map_err(|e| e.to_string())
 }
 
 /// Switches the active locale and returns the full string table for it.
