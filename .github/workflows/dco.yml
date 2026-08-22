@@ -19,4 +19,4 @@ jobs:
   # "dco / Signed-off-by present on every commit", and renaming the job
   # renames the check that branch protection is configured against.
   dco:
-    uses: Glyndor/.github/.github/workflows/dco.yml@e70ff47fd8aefa0f054846815f19b98768d61122 # v1.17.0
+    uses: Glyndor/.github/.github/workflows/dco.yml@11d87e7e4d6320d1cf89eb403a50d03613a18e30 # v1.18.0
