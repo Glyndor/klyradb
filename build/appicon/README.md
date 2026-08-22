@@ -1,11 +1,7 @@
 # appicon
 
-Place a 512x512 PNG here as `appicon.png`.
-Used by:
-- Wails build (window + packaged binary)
-- Snap desktop entry (hicolor/512x512)
+`appicon.png` is the 512×512 source logo shown in the README.
 
-Quick placeholder (ImageMagick):
-```bash
-convert -size 512x512 gradient:'#7cf5a4-#5ddbff' appicon.png
-```
+The application and packaging icons are generated from it under `icons/`
+(`icons/icon.png` is the RGBA source the Tauri build and the snap desktop
+entry use).

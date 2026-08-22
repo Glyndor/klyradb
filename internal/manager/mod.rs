@@ -1,0 +1,438 @@
+//! Instance manager — the orchestrator the bridge drives.
+//!
+//! Owns the registry of managed instances, their on-disk layout and the
+//! lifecycle calls that fan out to the per-engine implementations. The manager
+//! guarantees the invariants a correct instance manager must hold: every
+//! instance gets an isolated data directory, no two instances are handed the
+//! same port, and the persisted registry is always consistent with what is in
+//! memory.
+
+use std::collections::HashMap;
+use std::net::TcpListener;
+use std::path::{Path, PathBuf};
+
+use crate::engine::{DbType, Engine, EngineError, Instance, Status, Version};
+use crate::install;
+use crate::store::{Store, StoreError};
+
+/// The first port each engine kind is offered; allocation scans upward from
+/// here. Kept distinct per engine so fresh instances rarely collide on creation.
+fn default_port(db: DbType) -> u16 {
+	match db {
+		DbType::Postgres => 5432,
+		DbType::Mysql => 3306,
+		DbType::Mariadb => 3316,
+		DbType::Valkey => 6379,
+		DbType::Redis => 6390,
+		DbType::Mongodb => 27017,
+	}
+}
+
+/// How far above the default port allocation will scan before giving up.
+const PORT_SCAN_SPAN: u16 = 500;
+
+/// A manager-level failure.
+#[derive(Debug)]
+pub enum ManagerError {
+	/// The requested instance id is not in the registry.
+	NotFound(String),
+	/// A supplied argument was invalid (empty name, unknown engine, …).
+	Invalid(String),
+	/// No free port was found in the scan window.
+	NoFreePort(DbType),
+	/// An engine operation failed.
+	Engine(String),
+	/// Reading or writing the registry failed.
+	Store(String),
+}
+
+impl std::fmt::Display for ManagerError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			ManagerError::NotFound(id) => write!(f, "no such instance: {id}"),
+			ManagerError::Invalid(m) => write!(f, "{m}"),
+			ManagerError::NoFreePort(db) => {
+				write!(f, "no free port for {} in scan window", db.as_str())
+			}
+			ManagerError::Engine(m) => write!(f, "{m}"),
+			ManagerError::Store(m) => write!(f, "{m}"),
+		}
+	}
+}
+
+impl std::error::Error for ManagerError {}
+
+impl From<EngineError> for ManagerError {
+	fn from(e: EngineError) -> Self {
+		ManagerError::Engine(e.to_string())
+	}
+}
+
+impl From<StoreError> for ManagerError {
+	fn from(e: StoreError) -> Self {
+		ManagerError::Store(e.to_string())
+	}
+}
+
+/// The set of per-instance directories under the base directory.
+struct Layout {
+	data: PathBuf,
+	logs: PathBuf,
+	pids: PathBuf,
+	conf: PathBuf,
+}
+
+/// The instance registry and lifecycle orchestrator.
+pub struct Manager {
+	base: PathBuf,
+	layout: Layout,
+	store: Store,
+	engines: HashMap<DbType, Box<dyn Engine>>,
+	instances: HashMap<String, Instance>,
+}
+
+impl Manager {
+	/// Builds a manager rooted at `base`, creating the data/logs/pids/conf
+	/// subdirectories and wiring the supplied engine implementations. Does not
+	/// yet load the registry — call [`Manager::load_all`].
+	pub fn new(
+		base: impl AsRef<Path>,
+		engines: Vec<Box<dyn Engine>>,
+	) -> Result<Manager, ManagerError> {
+		let base = base.as_ref().to_path_buf();
+		let layout = Layout {
+			data: base.join("data"),
+			logs: base.join("logs"),
+			pids: base.join("pids"),
+			conf: base.join("conf"),
+		};
+		for dir in [&layout.data, &layout.logs, &layout.pids, &layout.conf] {
+			std::fs::create_dir_all(dir).map_err(|e| ManagerError::Store(e.to_string()))?;
+		}
+		let store = Store::new(&base)?;
+		let engines = engines.into_iter().map(|e| (e.db_type(), e)).collect();
+		Ok(Manager {
+			base,
+			layout,
+			store,
+			engines,
+			instances: HashMap::new(),
+		})
+	}
+
+	/// Loads the persisted registry into memory, refreshing each instance's
+	/// status from its engine so the in-memory view matches reality on launch.
+	pub fn load_all(&mut self) -> Result<(), ManagerError> {
+		self.instances.clear();
+		for mut inst in self.store.read()? {
+			if let Some(engine) = self.engines.get(&inst.db_type) {
+				inst.status = engine.check_status(&inst);
+			}
+			self.instances.insert(inst.id.clone(), inst);
+		}
+		Ok(())
+	}
+
+	/// Every managed instance, in arbitrary order.
+	pub fn list(&self) -> Vec<Instance> {
+		self.instances.values().cloned().collect()
+	}
+
+	/// A copy of a single instance by id, if it exists.
+	pub fn get(&self, id: &str) -> Option<Instance> {
+		self.instances.get(id).cloned()
+	}
+
+	/// The installed and installable versions across every wired engine.
+	pub fn versions(&self) -> Vec<Version> {
+		let mut all: Vec<Version> = self.engines.values().flat_map(|e| e.versions()).collect();
+		all.sort_by(|a, b| {
+			a.db_type
+				.as_str()
+				.cmp(b.db_type.as_str())
+				.then(b.major.cmp(&a.major))
+		});
+		all
+	}
+
+	/// Creates and initializes a new instance.
+	///
+	/// Rejects an empty name and an unknown engine, allocates a free port when
+	/// `port` is `None` (or validates the requested one is free), lays out an
+	/// isolated data directory, lets the engine initialize it, and persists the
+	/// registry only after the engine succeeds.
+	pub fn create(
+		&mut self,
+		name: &str,
+		db: DbType,
+		version: &str,
+		port: Option<u16>,
+	) -> Result<Instance, ManagerError> {
+		let name = name.trim();
+		if name.is_empty() {
+			return Err(ManagerError::Invalid(
+				"instance name must not be empty".into(),
+			));
+		}
+		if !self.engines.contains_key(&db) {
+			return Err(ManagerError::Invalid(format!(
+				"unsupported engine: {}",
+				db.as_str()
+			)));
+		}
+		let port = match port {
+			Some(p) if self.port_taken(p) => {
+				return Err(ManagerError::Invalid(format!("port {p} is already in use")))
+			}
+			Some(p) => p,
+			None => self.next_free_port(db)?,
+		};
+
+		let id = self.fresh_id();
+		let conf_ext = conf_ext(db);
+		let mut inst = Instance {
+			data_dir: path_str(&self.layout.data.join(&id)),
+			log_file: path_str(&self.layout.logs.join(format!("{id}.log"))),
+			pid_file: path_str(&self.layout.pids.join(format!("{id}.pid"))),
+			conf_file: conf_ext
+				.map(|ext| path_str(&self.layout.conf.join(format!("{id}.{ext}"))))
+				.unwrap_or_default(),
+			id: id.clone(),
+			name: name.to_string(),
+			db_type: db,
+			version: version.to_string(),
+			port,
+			user: default_user(db).to_string(),
+			status: Status::Init,
+			created_at: String::new(),
+			last_error: String::new(),
+			upgrade_version: String::new(),
+			patch_update: String::new(),
+		};
+
+		let engine = self
+			.engines
+			.get(&db)
+			.expect("engine presence checked above");
+		engine.create(&mut inst)?;
+		inst.status = Status::Stopped;
+
+		self.instances.insert(id.clone(), inst.clone());
+		self.persist()?;
+		Ok(inst)
+	}
+
+	/// Starts the instance, recording an error status if the engine refuses.
+	pub fn start(&mut self, id: &str) -> Result<(), ManagerError> {
+		self.with_engine(id, |engine, inst| engine.start(inst))?;
+		self.set_status(id, Status::Running);
+		self.persist()
+	}
+
+	/// Stops the instance.
+	pub fn stop(&mut self, id: &str) -> Result<(), ManagerError> {
+		self.with_engine(id, |engine, inst| engine.stop(inst))?;
+		self.set_status(id, Status::Stopped);
+		self.persist()
+	}
+
+	/// Stops every running instance, best-effort. Used on shutdown.
+	pub fn stop_all(&mut self) {
+		let ids: Vec<String> = self.instances.keys().cloned().collect();
+		for id in ids {
+			let _ = self.stop(&id);
+		}
+	}
+
+	/// Installs the engine binary for an instance, streaming each output line
+	/// to `emit`.
+	///
+	/// A Linux-specific "blocked" check runs **before** the install command
+	/// (and therefore before the Snap branch in [`install::install`]), so the
+	/// user sees the real reason for a MongoDB install on both Linux direct
+	/// downloads and under Snap, instead of the generic "not bundled in the
+	/// snap package" message. The blocked status and reason are persisted so
+	/// the frontend instance card can display them.
+	pub fn install(&mut self, id: &str, emit: impl FnMut(&str)) -> Result<(), ManagerError> {
+		let inst = self
+			.instances
+			.get(id)
+			.ok_or_else(|| ManagerError::NotFound(id.to_string()))?
+			.clone();
+		if let Some(reason) = install::blocked_reason(inst.db_type, &inst.version) {
+			self.mark_blocked(id, &reason)?;
+			return Err(ManagerError::Engine(reason));
+		}
+		install::install(inst.db_type, &inst.version, emit).map_err(ManagerError::Engine)
+	}
+
+	/// Re-runs the install for a patch release, then restarts the instance.
+	/// Streams install progress to `emit` like [`Manager::install`], and
+	/// applies the same Linux-specific blocked check first.
+	pub fn upgrade_patch(&mut self, id: &str, emit: impl FnMut(&str)) -> Result<(), ManagerError> {
+		let inst = self
+			.instances
+			.get(id)
+			.ok_or_else(|| ManagerError::NotFound(id.to_string()))?
+			.clone();
+		if let Some(reason) = install::blocked_reason(inst.db_type, &inst.version) {
+			self.mark_blocked(id, &reason)?;
+			return Err(ManagerError::Engine(reason));
+		}
+		let _ = self.with_engine(id, |engine, inst| engine.stop(inst));
+		install::install(inst.db_type, &inst.version, emit).map_err(ManagerError::Engine)?;
+		self.with_engine(id, |engine, inst| engine.start(inst))
+	}
+
+	/// Sets the instance status to [`Status::NeedsInstall`] and records the
+	/// user-facing reason in `last_error`, persisting the registry. Used by
+	/// [`Manager::install`] and [`Manager::upgrade_patch`] when the engine
+	/// cannot be installed on this host.
+	fn mark_blocked(&mut self, id: &str, reason: &str) -> Result<(), ManagerError> {
+		let inst = self
+			.instances
+			.get_mut(id)
+			.ok_or_else(|| ManagerError::NotFound(id.to_string()))?;
+		inst.status = Status::NeedsInstall;
+		inst.last_error = reason.to_string();
+		self.persist()
+	}
+
+	/// Stops the instance and removes it and its data directory.
+	pub fn delete(&mut self, id: &str) -> Result<(), ManagerError> {
+		let inst = self
+			.instances
+			.get(id)
+			.ok_or_else(|| ManagerError::NotFound(id.to_string()))?
+			.clone();
+		if let Some(engine) = self.engines.get(&inst.db_type) {
+			let _ = engine.stop(&inst);
+			engine.delete(&inst)?;
+		}
+		self.instances.remove(id);
+		self.persist()
+	}
+
+	/// The instance's live status, recomputed from its engine.
+	pub fn status(&self, id: &str) -> Result<Status, ManagerError> {
+		let inst = self
+			.instances
+			.get(id)
+			.ok_or_else(|| ManagerError::NotFound(id.to_string()))?;
+		Ok(self
+			.engines
+			.get(&inst.db_type)
+			.map(|e| e.check_status(inst))
+			.unwrap_or(inst.status))
+	}
+
+	/// The next free port for `db`: the first port from the engine default
+	/// upward that is neither claimed by another instance nor open on the host.
+	pub fn next_free_port(&self, db: DbType) -> Result<u16, ManagerError> {
+		let base = default_port(db);
+		for offset in 0..PORT_SCAN_SPAN {
+			let port = base.saturating_add(offset);
+			if !self.port_taken(port) && port_available(port) {
+				return Ok(port);
+			}
+		}
+		Err(ManagerError::NoFreePort(db))
+	}
+
+	/// The base directory the manager is rooted at.
+	pub fn base_dir(&self) -> &Path {
+		&self.base
+	}
+
+	fn port_taken(&self, port: u16) -> bool {
+		self.instances.values().any(|i| i.port == port)
+	}
+
+	fn with_engine<F>(&mut self, id: &str, f: F) -> Result<(), ManagerError>
+	where
+		F: FnOnce(&dyn Engine, &Instance) -> Result<(), EngineError>,
+	{
+		let inst = self
+			.instances
+			.get(id)
+			.ok_or_else(|| ManagerError::NotFound(id.to_string()))?
+			.clone();
+		let engine = self.engines.get(&inst.db_type).ok_or_else(|| {
+			ManagerError::Invalid(format!("unsupported engine: {}", inst.db_type.as_str()))
+		})?;
+		match f(engine.as_ref(), &inst) {
+			Ok(()) => Ok(()),
+			Err(e) => {
+				let msg = e.to_string();
+				if let Some(stored) = self.instances.get_mut(id) {
+					stored.status = Status::Error;
+					stored.last_error = msg.clone();
+				}
+				let _ = self.persist();
+				Err(ManagerError::Engine(msg))
+			}
+		}
+	}
+
+	fn set_status(&mut self, id: &str, status: Status) {
+		if let Some(inst) = self.instances.get_mut(id) {
+			inst.status = status;
+			inst.last_error = String::new();
+		}
+	}
+
+	fn persist(&self) -> Result<(), ManagerError> {
+		let mut all: Vec<Instance> = self.instances.values().cloned().collect();
+		all.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+		self.store.write(&all)?;
+		Ok(())
+	}
+
+	fn fresh_id(&self) -> String {
+		loop {
+			let id = random_id();
+			if !self.instances.contains_key(&id) {
+				return id;
+			}
+		}
+	}
+}
+
+/// A random 12-character hex instance id.
+fn random_id() -> String {
+	let mut bytes = [0u8; 6];
+	getrandom::getrandom(&mut bytes).expect("system RNG unavailable");
+	bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The configuration file extension an engine uses, if it writes one.
+fn conf_ext(db: DbType) -> Option<&'static str> {
+	match db {
+		DbType::Postgres => None,
+		DbType::Mysql | DbType::Mariadb => Some("cnf"),
+		DbType::Valkey | DbType::Redis => Some("conf"),
+		DbType::Mongodb => Some("yml"),
+	}
+}
+
+/// The default superuser/role name surfaced for an engine's connection URI.
+fn default_user(db: DbType) -> &'static str {
+	match db {
+		DbType::Postgres => "postgres",
+		DbType::Mysql | DbType::Mariadb => "root",
+		DbType::Valkey | DbType::Redis | DbType::Mongodb => "",
+	}
+}
+
+/// Whether a TCP port can be bound on loopback right now (i.e. nothing is
+/// listening on it).
+fn port_available(port: u16) -> bool {
+	TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+fn path_str(p: &Path) -> String {
+	p.to_string_lossy().into_owned()
+}
+
+#[cfg(test)]
+mod tests;

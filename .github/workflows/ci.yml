@@ -13,58 +13,113 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  ci:
+    uses: Glyndor/.github/.github/workflows/rust-ci.yml@11d87e7e4d6320d1cf89eb403a50d03613a18e30 # v1.18.0
+    with:
+      msrv: "1.96"
+      extra-test-os: '["macos-latest", "windows-latest"]'
+      coverage-threshold: 90
+      # The engine, installer and bridge layers shell out to real database
+      # tooling and the Tauri runtime, so they are exercised by the live
+      # DB-integration and app smoke gate rather than unit tests; only their
+      # pure logic is unit-covered.
+      coverage-ignore-regex: "internal/(pg|mysql|mariadb|mongodb|redis|install|commands)/|internal/engine/paths.rs|internal/main.rs"
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26.6'
-          cache: true
+  audit:
+    uses: Glyndor/.github/.github/workflows/rust-audit.yml@11d87e7e4d6320d1cf89eb403a50d03613a18e30 # v1.18.0
 
-      - name: Test with coverage
-        run: go test ./internal/... -coverprofile=coverage.out -covermode=atomic
+  supply-chain:
+    uses: Glyndor/.github/.github/workflows/rust-supply-chain.yml@11d87e7e4d6320d1cf89eb403a50d03613a18e30 # v1.18.0
 
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26.6'
-          cache: true
-
-      - name: golangci-lint
-        run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-          golangci-lint run --timeout=5m
-
-  security:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26.6'
-          cache: true
-
-      - name: gosec
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
-          gosec -exclude=G204,G302,G304 ./...
+  line-limit:
+    uses: Glyndor/.github/.github/workflows/line-limit.yml@11d87e7e4d6320d1cf89eb403a50d03613a18e30 # v1.18.0
+    with:
+      hard-limit: 500
+      soft-limit: 300
+      extensions: "rs"
 
   pin-policy:
-    uses: Glyndor/.github/.github/workflows/pin-policy-reusable.yml@8517d94fde00466f59b95c5d1bd838e2ad24a8bf # v1.15.2
+    uses: Glyndor/.github/.github/workflows/pin-policy-reusable.yml@11d87e7e4d6320d1cf89eb403a50d03613a18e30 # v1.18.0
+
+  # ---------------------------------------------------------------------
+  # Stable status-check names.
+  #
+  # Branch protection on `develop` requires `test (ubuntu-latest)`,
+  # `test (windows-latest)`, `test (macos-latest)`, `lint` and `security`.
+  # Those were job names in the Go CI this branch replaces; the Rust CI runs
+  # through reusables, which report as `ci / Test`, `ci / Format & lint` and
+  # so on. Nothing was wrong with either set — they simply do not share a
+  # name, so the required checks would never report and the pull request
+  # could never merge.
+  #
+  # These jobs republish the old names and take their verdict from the
+  # reusables. That keeps the required-check names a contract the branch
+  # protection can hold steady while the CI underneath is free to change,
+  # which is the arrangement that avoids editing a ruleset every time a
+  # workflow is reorganised.
+  #
+  # What is lost is granularity: `test (windows-latest)` now means "CI
+  # passed, and CI includes Windows", not "the Windows job specifically
+  # passed". The per-platform result is still published as
+  # `ci / Test (windows-latest)` and visible on the pull request. If the
+  # ruleset is ever updated to name the reusables' checks directly, these
+  # three jobs should be deleted rather than kept alongside.
+  #
+  # `if: always()` with an explicit result comparison is deliberate: a job
+  # skipped because its dependency failed does not report a failure, it
+  # reports nothing, and a required check that reports nothing blocks
+  # forever instead of failing cleanly.
+  test:
+    needs: [ci]
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Only names the check; every one of these evaluates the same
+        # aggregate result, so they all run on the cheapest runner.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Reflect the CI result
+        env:
+          RESULT: ${{ needs.ci.result }}
+        run: |
+          set -euo pipefail
+          echo "ci = $RESULT"
+          [ "$RESULT" = "success" ] || exit 1
+
+  lint:
+    needs: [ci]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reflect the CI result
+        env:
+          RESULT: ${{ needs.ci.result }}
+        run: |
+          set -euo pipefail
+          echo "ci = $RESULT"
+          [ "$RESULT" = "success" ] || exit 1
+
+  security:
+    needs: [audit, supply-chain]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reflect the audit and supply-chain results
+        env:
+          AUDIT: ${{ needs.audit.result }}
+          SUPPLY: ${{ needs.supply-chain.result }}
+        run: |
+          set -euo pipefail
+          echo "audit = $AUDIT, supply-chain = $SUPPLY"
+          [ "$AUDIT" = "success" ] || exit 1
+          [ "$SUPPLY" = "success" ] || exit 1
 
   dependabot-freshness:
-    uses: Glyndor/.github/.github/workflows/dependabot-freshness.yml@8517d94fde00466f59b95c5d1bd838e2ad24a8bf # v1.15.2
+    uses: Glyndor/.github/.github/workflows/dependabot-freshness.yml@11d87e7e4d6320d1cf89eb403a50d03613a18e30 # v1.18.0
     with:
       max-age-days: 15

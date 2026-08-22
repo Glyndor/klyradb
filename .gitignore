@@ -7,3 +7,18 @@ parts/
 prime/
 stage/
 *.log
+
+# Rust
+/target
+/gen
+
+# cargo-fuzz
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/Cargo.lock
+
+# Go coverage (legacy)
+coverage.out
+/app/target
+/app/gen

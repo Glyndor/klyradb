@@ -1,0 +1,33 @@
+[package]
+name = "klyradb-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1"
+
+[dependencies.klyradb]
+path = ".."
+
+# Keep the fuzz crate out of the main workspace so a stable `cargo test` at the
+# root never pulls in the nightly-only libfuzzer toolchain.
+[workspace]
+
+[[bin]]
+name = "registry_parse"
+path = "fuzz_targets/registry_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "version_match"
+path = "fuzz_targets/version_match.rs"
+test = false
+doc = false
+bench = false
