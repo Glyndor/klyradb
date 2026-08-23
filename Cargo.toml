@@ -1,6 +1,6 @@
 [package]
 name = "klyradb"
-version = "0.7.2"
+version = "0.8.0"
 edition = "2021"
 rust-version = "1.96"
 description = "Local database manager — run isolated PostgreSQL, MySQL, MariaDB, Valkey, Redis and MongoDB instances without Docker."
