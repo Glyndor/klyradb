@@ -49,6 +49,17 @@ Download from [**Releases →**](https://github.com/Glyndor/klyradb/releases/lat
 | **Redis** | 6379 | Latest 3 majors |
 | **MongoDB** | 27017 | Latest 3 majors |
 
+> **MongoDB on Linux:** the `mongodb` package is not in Debian's or Ubuntu's
+> official repositories — it was removed years ago. MongoDB Inc. distributes
+> the official server as `mongodb-org` from `repo.mongodb.org`. On Linux,
+> KlyraDB does **not** configure that repository, so a fresh MongoDB install
+> fails with an explanatory message instead of silently going through `apt`.
+> To use MongoDB on Linux today, either add the official MongoDB APT
+> repository to your system (see
+> [the MongoDB installation guide](https://www.mongodb.com/docs/manual/installation/)),
+> or wait for the upcoming verified download path that ships with the
+> Tauri rewrite.
+
 Version lists are fetched live from [endoflife.date](https://endoflife.date) at startup so you always see the most recent releases. Falls back to a built-in list when offline.
 
 ### Instance management
@@ -64,7 +75,7 @@ KlyraDB detects when a **patch update** is available for an installed engine (e.
 
 ### Engine installation
 
-Outside the Snap, engine binaries may not be present yet. KlyraDB shows an **Install** button in that case — clicking it streams live `apt` / `brew` progress directly in the UI, no terminal needed. The instance starts automatically once the install finishes.
+Outside the Snap, engine binaries may not be present yet. KlyraDB shows an **Install** button in that case — clicking it streams live `apt` / `brew` progress directly in the UI, no terminal needed. The instance starts automatically once the install finishes. (MongoDB on Linux is the one exception today — see the note in [Supported databases](#supported-databases).)
 
 ### Localization
 
@@ -87,25 +98,23 @@ Start / Stop / Delete at any time — nothing touches the rest of your system.
 
 ## Build from source
 
-**Requirements:** Go 1.26+, Node.js, [Wails v2](https://wails.io/docs/gettingstarted/installation)
+**Requirements:** Rust 1.96+ and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your platform (on Linux: `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libsoup-3.0-dev`).
 
 ```bash
-# Install Wails CLI
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
 # Clone
 git clone https://github.com/Glyndor/klyradb.git
-cd KlyraDB
+cd klyradb
 
-# Build
-wails build -tags webkit2_41   # Linux
-wails build                    # macOS
-wails build -nsis              # Windows (requires NSIS)
+# Build the desktop app (Tauri shell in app/)
+cargo build --release --locked --manifest-path app/Cargo.toml
+
+# Run
+cargo run --manifest-path app/Cargo.toml
 ```
 
-**Tests:**
+**Tests** (the GUI-agnostic core):
 ```bash
-go test ./internal/...
+cargo test
 ```
 
 ---
@@ -136,4 +145,4 @@ Issues and pull requests are welcome. Open an [issue](https://github.com/Glyndor
 
 ## License
 
-[MIT](LICENSE). Built with Go and [Wails](https://wails.io).
+[MIT](LICENSE). Built with Rust and [Tauri](https://tauri.app).

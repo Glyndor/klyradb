@@ -1,0 +1,11 @@
+# License attribution
+
+{{#each licenses}}
+## {{name}}
+
+Used by:
+{{#each used_by}}
+- {{crate.name}} {{crate.version}}
+{{/each}}
+
+{{/each}}

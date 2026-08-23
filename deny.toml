@@ -1,0 +1,25 @@
+# cargo-deny policy for the GUI-agnostic core crate.
+
+[licenses]
+# Permissive licenses only — every dependency must resolve to one of these.
+allow = [
+	"Apache-2.0",
+	"MIT",
+	"Unicode-3.0",
+	"BSD-2-Clause",
+	"BSD-3-Clause",
+	"ISC",
+	"Zlib",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[advisories]
+yanked = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

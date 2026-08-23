@@ -1,0 +1,25 @@
+[package]
+name = "klyradb"
+version = "0.8.0"
+edition = "2021"
+rust-version = "1.96"
+description = "Local database manager — run isolated PostgreSQL, MySQL, MariaDB, Valkey, Redis and MongoDB instances without Docker."
+repository = "https://github.com/Glyndor/klyradb"
+license = "MIT"
+
+# The structure standard mandates all product code under internal/, so the
+# Cargo src/ default is overridden with an explicit path key. This crate is the
+# GUI-agnostic core; the Tauri shell lives in the isolated `app/` crate so the
+# generic Rust CI can test the core without the GTK/WebKit system libraries.
+[lib]
+name = "klyradb"
+path = "internal/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+include_dir = "0.7"
+getrandom = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
