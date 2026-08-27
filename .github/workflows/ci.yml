@@ -33,7 +33,7 @@ jobs:
     uses: Glyndor/.github/.github/workflows/rust-audit.yml@11d87e7e4d6320d1cf89eb403a50d03613a18e30 # v1.18.0
 
   supply-chain:
-    uses: Glyndor/.github/.github/workflows/rust-supply-chain.yml@11d87e7e4d6320d1cf89eb403a50d03613a18e30 # v1.18.0
+    uses: Glyndor/.github/.github/workflows/rust-supply-chain.yml@d5041b038b7d4935e75400dff612962e6fa14893 # v1.21.0
 
   line-limit:
     uses: Glyndor/.github/.github/workflows/line-limit.yml@11d87e7e4d6320d1cf89eb403a50d03613a18e30 # v1.18.0
